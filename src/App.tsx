@@ -151,14 +151,81 @@ function CodeBox({ text }: { text: string }) {
   )
 }
 
-function ToolUseCard({ block }: { block: ToolUseBlock }) {
+function ToolCardHeader({ name, id }: { name: string; id: string }) {
+  return (
+    <div className="px-3 py-1.5 bg-zinc-800 text-xs font-mono flex items-center gap-2">
+      <span className="text-purple-400 font-medium">tool_use</span>
+      <span className="text-zinc-100 font-semibold">{name}</span>
+      <span className="text-zinc-600 ml-auto truncate">{id}</span>
+    </div>
+  )
+}
+
+function EditDiff({ oldStr, newStr }: { oldStr: string; newStr: string }) {
+  const oldLines = oldStr.split('\n')
+  const newLines = newStr.split('\n')
+  return (
+    <div className="text-xs font-mono rounded border border-zinc-800 leading-relaxed">
+      {oldLines.map((line, i) => (
+        <div key={`old-${i}`} className="bg-red-950/50 text-red-300 px-2 whitespace-pre-wrap break-all">{`- ${line}`}</div>
+      ))}
+      {newLines.map((line, i) => (
+        <div key={`new-${i}`} className="bg-green-950/50 text-green-300 px-2 whitespace-pre-wrap break-all">{`+ ${line}`}</div>
+      ))}
+    </div>
+  )
+}
+
+function EditToolCard({ block }: { block: ToolUseBlock }) {
+  const input = block.input as { file_path?: string; old_string?: string; new_string?: string; replace_all?: boolean }
+  const { file_path = '', old_string = '', new_string = '', replace_all } = input
   return (
     <div className="rounded-md border border-zinc-700 overflow-hidden">
-      <div className="px-3 py-1.5 bg-zinc-800 text-xs font-mono flex items-center gap-2">
-        <span className="text-purple-400 font-medium">tool_use</span>
-        <span className="text-zinc-100 font-semibold">{block.name}</span>
-        <span className="text-zinc-600 ml-auto truncate">{block.id}</span>
+      <ToolCardHeader name={block.name} id={block.id} />
+      <div className="p-3 flex flex-col gap-2">
+        <div className="flex items-center gap-2 text-xs font-mono">
+          <span className="text-zinc-500 shrink-0">file</span>
+          <span className="text-zinc-200 truncate">{file_path}</span>
+          {replace_all && <span className="text-zinc-500 shrink-0 ml-auto">replace_all</span>}
+        </div>
+        <Collapsible label="Diff" defaultOpen>
+          <EditDiff oldStr={old_string} newStr={new_string} />
+        </Collapsible>
       </div>
+    </div>
+  )
+}
+
+function WriteToolCard({ block }: { block: ToolUseBlock }) {
+  const input = block.input as { file_path?: string; content?: string }
+  const { file_path = '', content = '' } = input
+  return (
+    <div className="rounded-md border border-zinc-700 overflow-hidden">
+      <ToolCardHeader name={block.name} id={block.id} />
+      <div className="p-3 flex flex-col gap-2">
+        <div className="flex items-center gap-2 text-xs font-mono">
+          <span className="text-zinc-500 shrink-0">file</span>
+          <span className="text-zinc-200 truncate">{file_path}</span>
+          <span className="text-zinc-600 shrink-0 ml-auto">{content.length.toLocaleString()} chars</span>
+        </div>
+        <Collapsible label="Content" defaultOpen>
+          <div className="text-xs font-mono rounded border border-zinc-800 leading-relaxed">
+            {content.split('\n').map((line, i) => (
+              <div key={i} className="bg-green-950/50 text-green-300 px-2 whitespace-pre-wrap break-all">{`+ ${line}`}</div>
+            ))}
+          </div>
+        </Collapsible>
+      </div>
+    </div>
+  )
+}
+
+function ToolUseCard({ block }: { block: ToolUseBlock }) {
+  if (block.name === 'Edit') return <EditToolCard block={block} />
+  if (block.name === 'Write') return <WriteToolCard block={block} />
+  return (
+    <div className="rounded-md border border-zinc-700 overflow-hidden">
+      <ToolCardHeader name={block.name} id={block.id} />
       <div className="p-3">
         <Collapsible label="Input" defaultOpen>
           <CodeBox text={JSON.stringify(block.input, null, 2)} />
