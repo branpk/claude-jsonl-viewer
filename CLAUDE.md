@@ -23,12 +23,13 @@ Pure client-side React + TypeScript app. No backend, no router. All file I/O hap
 
 ### Current structure
 
-Everything lives in `src/App.tsx` (~340 lines). It has these layers:
+Everything lives in `src/App.tsx` (~550 lines). It has these layers:
 
 1. **Types** — TypeScript interfaces for `AssistantEntry`, `UserEntry`, `SystemEntry` and their content blocks.
 2. **Parser** — `parseJsonl(filename, text)` splits on newlines, `JSON.parse`s each non-empty line, returns `{ filename, entries: unknown[], errors }`.
 3. **Type guards** — `isAssistantEntry`, `isUserEntry`, `isSystemEntry` narrow `unknown` entries at render time.
 4. **Rendered components** — `RenderedAssistant`, `RenderedUser`, `RenderedSystem` plus `ToolUseCard`, `ToolResultCard`, `Collapsible`, `CodeBox`.
+   - `ToolUseCard` dispatches to `EditToolCard` or `WriteToolCard` for those tools; all others fall back to raw JSON input. `EditToolCard` renders a diff view (red `-` lines for `old_string`, green `+` lines for `new_string`). `WriteToolCard` renders the full file content with green `+` line highlighting.
 5. **EntryCard** — wraps any entry with a type/timestamp header and a rendered↔raw toggle (defaults to rendered).
 6. **DropZone / App** — file loading UI and top-level state.
 

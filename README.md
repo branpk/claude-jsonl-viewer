@@ -35,7 +35,7 @@ Messages form a tree via `parentUuid`. Assistant content blocks: `text`, `thinki
 - Parse error reporting for malformed lines
 - Each entry shows type badge (color-coded), timestamp, and rendered↔raw toggle
 - **Rendered view** (default): human-readable display per entry type
-  - `assistant`: prose text, collapsible thinking blocks, tool call cards with expanded input
+  - `assistant`: prose text, collapsible thinking blocks, tool call cards with expanded input; `Edit` calls show a diff view (red/green lines), `Write` calls show full file content with green highlighting
   - `user`: text messages, tool result cards with expanded output and char count
   - `system`: content string + collapsible metadata
   - Unknown types: pretty-printed JSON fallback
