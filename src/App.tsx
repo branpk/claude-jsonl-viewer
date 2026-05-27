@@ -1,4 +1,52 @@
-import { useState, useCallback, DragEvent, ChangeEvent } from 'react'
+import { useState, useCallback, DragEvent, ChangeEvent, ReactNode } from 'react'
+
+// ---- Types ----
+
+interface TextBlock { type: 'text'; text: string }
+interface ThinkingBlock { type: 'thinking'; thinking: string }
+interface ToolUseBlock { type: 'tool_use'; id: string; name: string; input: unknown }
+type AssistantBlock = TextBlock | ThinkingBlock | ToolUseBlock
+
+interface ToolResultBlock { type: 'tool_result'; tool_use_id: string; content: unknown }
+type UserBlock = ToolResultBlock | TextBlock
+
+interface AssistantEntry {
+  type: 'assistant'
+  uuid: string
+  parentUuid?: string | null
+  timestamp: string
+  message: {
+    content: AssistantBlock[]
+    usage?: {
+      input_tokens: number
+      output_tokens: number
+      cache_read_input_tokens?: number
+      cache_creation_input_tokens?: number
+    }
+  }
+}
+
+interface UserEntry {
+  type: 'user'
+  uuid: string
+  parentUuid?: string | null
+  timestamp: string
+  message: {
+    content: UserBlock[] | string
+  }
+}
+
+interface SystemEntry {
+  type: 'system'
+  uuid: string
+  parentUuid?: string | null
+  timestamp: string
+  subtype?: string
+  content?: string
+  [key: string]: unknown
+}
+
+// ---- Parser ----
 
 interface ParseResult {
   filename: string
@@ -21,6 +69,266 @@ function parseJsonl(filename: string, text: string): ParseResult {
   }
   return { filename, entries, errors }
 }
+
+// ---- Type guards ----
+
+function isAssistantEntry(e: unknown): e is AssistantEntry {
+  return typeof e === 'object' && e !== null && (e as Record<string, unknown>).type === 'assistant'
+}
+
+function isUserEntry(e: unknown): e is UserEntry {
+  return typeof e === 'object' && e !== null && (e as Record<string, unknown>).type === 'user'
+}
+
+function isSystemEntry(e: unknown): e is SystemEntry {
+  return typeof e === 'object' && e !== null && (e as Record<string, unknown>).type === 'system'
+}
+
+// ---- Helpers ----
+
+function formatTimestamp(ts: string): string {
+  try {
+    return new Date(ts).toLocaleString(undefined, {
+      month: 'short', day: 'numeric',
+      hour: '2-digit', minute: '2-digit', second: '2-digit',
+    })
+  } catch {
+    return ts
+  }
+}
+
+function getEntryType(entry: unknown): string {
+  if (typeof entry === 'object' && entry !== null) {
+    const t = (entry as Record<string, unknown>).type
+    if (typeof t === 'string') return t
+  }
+  return 'unknown'
+}
+
+function getEntryTimestamp(entry: unknown): string | null {
+  if (typeof entry === 'object' && entry !== null) {
+    const ts = (entry as Record<string, unknown>).timestamp
+    if (typeof ts === 'string') return formatTimestamp(ts)
+  }
+  return null
+}
+
+function toolResultText(content: unknown): string {
+  if (typeof content === 'string') return content
+  if (Array.isArray(content)) {
+    return content.map(c => {
+      if (typeof c === 'string') return c
+      if (typeof c === 'object' && c !== null && 'text' in c) return (c as TextBlock).text
+      return JSON.stringify(c)
+    }).join('\n')
+  }
+  return JSON.stringify(content, null, 2)
+}
+
+// ---- Sub-components ----
+
+function Collapsible({ label, defaultOpen = false, children }: { label: string; defaultOpen?: boolean; children: ReactNode }) {
+  const [open, setOpen] = useState(defaultOpen)
+  return (
+    <div>
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="flex items-center gap-1.5 text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
+      >
+        <span className="font-mono">{open ? '▾' : '▸'}</span>
+        <span>{label}</span>
+      </button>
+      {open && <div className="mt-1.5">{children}</div>}
+    </div>
+  )
+}
+
+function CodeBox({ text }: { text: string }) {
+  return (
+    <pre className="text-xs font-mono text-zinc-300 overflow-x-auto whitespace-pre-wrap break-words p-2.5 bg-zinc-950 rounded border border-zinc-800 leading-relaxed">
+      {text}
+    </pre>
+  )
+}
+
+function ToolUseCard({ block }: { block: ToolUseBlock }) {
+  return (
+    <div className="rounded-md border border-zinc-700 overflow-hidden">
+      <div className="px-3 py-1.5 bg-zinc-800 text-xs font-mono flex items-center gap-2">
+        <span className="text-purple-400 font-medium">tool_use</span>
+        <span className="text-zinc-100 font-semibold">{block.name}</span>
+        <span className="text-zinc-600 ml-auto truncate">{block.id}</span>
+      </div>
+      <div className="p-3">
+        <Collapsible label="Input" defaultOpen>
+          <CodeBox text={JSON.stringify(block.input, null, 2)} />
+        </Collapsible>
+      </div>
+    </div>
+  )
+}
+
+function ToolResultCard({ block }: { block: ToolResultBlock }) {
+  const text = toolResultText(block.content)
+  return (
+    <div className="rounded-md border border-zinc-700 overflow-hidden">
+      <div className="px-3 py-1.5 bg-zinc-800 text-xs font-mono flex items-center gap-2">
+        <span className="text-green-400 font-medium">tool_result</span>
+        <span className="text-zinc-600 truncate">{block.tool_use_id}</span>
+      </div>
+      <div className="p-3">
+        <Collapsible label={`Output · ${text.length.toLocaleString()} chars`} defaultOpen>
+          <CodeBox text={text} />
+        </Collapsible>
+      </div>
+    </div>
+  )
+}
+
+// ---- Rendered entry views ----
+
+function RenderedAssistant({ entry }: { entry: AssistantEntry }) {
+  const content = entry.message?.content ?? []
+  const usage = entry.message?.usage
+  return (
+    <div className="flex flex-col gap-3">
+      {content.map((block, i) => {
+        if (block.type === 'text') {
+          return (
+            <p key={i} className="text-xs font-mono text-zinc-200 whitespace-pre-wrap leading-relaxed">
+              {block.text}
+            </p>
+          )
+        }
+        if (block.type === 'thinking') {
+          return (
+            <Collapsible key={i} label="Thinking" defaultOpen>
+              <p className="text-xs text-zinc-500 italic whitespace-pre-wrap leading-relaxed pl-3 border-l border-zinc-700 py-1">
+                {block.thinking}
+              </p>
+            </Collapsible>
+          )
+        }
+        if (block.type === 'tool_use') {
+          return <ToolUseCard key={i} block={block} />
+        }
+        return null
+      })}
+      {usage && (
+        <div className="flex items-center gap-3 text-xs text-zinc-600 font-mono pt-2 border-t border-zinc-800">
+          <span>{usage.input_tokens.toLocaleString()} in</span>
+          <span>{usage.output_tokens.toLocaleString()} out</span>
+          {(usage.cache_read_input_tokens ?? 0) > 0 && (
+            <span>{usage.cache_read_input_tokens!.toLocaleString()} cached</span>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function RenderedUser({ entry }: { entry: UserEntry }) {
+  const content = entry.message?.content ?? []
+  if (typeof content === 'string') {
+    return (
+      <p className="text-xs font-mono text-zinc-200 whitespace-pre-wrap leading-relaxed">
+        {content}
+      </p>
+    )
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      {content.map((block, i) => {
+        if (block.type === 'text') {
+          return (
+            <p key={i} className="text-xs font-mono text-zinc-200 whitespace-pre-wrap leading-relaxed">
+              {block.text}
+            </p>
+          )
+        }
+        if (block.type === 'tool_result') {
+          return <ToolResultCard key={i} block={block} />
+        }
+        return (
+          <CodeBox key={i} text={JSON.stringify(block, null, 2)} />
+        )
+      })}
+    </div>
+  )
+}
+
+function RenderedSystem({ entry }: { entry: SystemEntry }) {
+  const { type: _t, uuid: _u, parentUuid: _p, timestamp: _ts, isSidechain: _s, ...rest } = entry
+  const meta = Object.fromEntries(Object.entries(rest).filter(([k]) => k !== 'content'))
+  return (
+    <div className="flex flex-col gap-2">
+      {entry.content && (
+        <p className="text-xs font-mono text-zinc-400 whitespace-pre-wrap leading-relaxed">{entry.content}</p>
+      )}
+      {Object.keys(meta).length > 0 && (
+        <Collapsible label="Metadata" defaultOpen>
+          <CodeBox text={JSON.stringify(meta, null, 2)} />
+        </Collapsible>
+      )}
+    </div>
+  )
+}
+
+function RenderedEntry({ entry }: { entry: unknown }) {
+  if (isAssistantEntry(entry)) return <RenderedAssistant entry={entry} />
+  if (isUserEntry(entry)) return <RenderedUser entry={entry} />
+  if (isSystemEntry(entry)) return <RenderedSystem entry={entry} />
+  return (
+    <CodeBox text={JSON.stringify(entry, null, 2)} />
+  )
+}
+
+// ---- EntryCard with toggle ----
+
+const TYPE_COLOR: Record<string, string> = {
+  user: 'text-blue-400',
+  assistant: 'text-emerald-400',
+  system: 'text-yellow-500',
+  attachment: 'text-orange-400',
+  mode: 'text-zinc-500',
+}
+
+function EntryCard({ entry, index }: { entry: unknown; index: number }) {
+  const [raw, setRaw] = useState(false)
+  const type = getEntryType(entry)
+  const ts = getEntryTimestamp(entry)
+  const typeColor = TYPE_COLOR[type] ?? 'text-zinc-400'
+
+  return (
+    <div className="rounded-lg border border-zinc-700 bg-zinc-900 overflow-hidden">
+      <div className="px-3 py-1.5 bg-zinc-800 border-b border-zinc-700 flex items-center justify-between gap-4">
+        <div className="flex items-center gap-2 text-xs font-mono min-w-0">
+          <span className="text-zinc-600 shrink-0">#{index + 1}</span>
+          <span className={`${typeColor} shrink-0`}>{type}</span>
+          {ts && <span className="text-zinc-600 truncate">{ts}</span>}
+        </div>
+        <button
+          onClick={() => setRaw(r => !r)}
+          className="shrink-0 text-xs text-zinc-500 hover:text-zinc-300 transition-colors font-mono px-2 py-0.5 rounded border border-zinc-700 hover:border-zinc-500"
+        >
+          {raw ? 'rendered' : 'raw'}
+        </button>
+      </div>
+      <div className="p-4">
+        {raw ? (
+          <pre className="text-xs text-zinc-300 font-mono overflow-x-auto whitespace-pre-wrap break-words leading-relaxed">
+            {JSON.stringify(entry, null, 2)}
+          </pre>
+        ) : (
+          <RenderedEntry entry={entry} />
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ---- DropZone ----
 
 function DropZone({ onFile }: { onFile: (file: File) => void }) {
   const [dragging, setDragging] = useState(false)
@@ -62,18 +370,7 @@ function DropZone({ onFile }: { onFile: (file: File) => void }) {
   )
 }
 
-function EntryCard({ entry, index }: { entry: unknown; index: number }) {
-  return (
-    <div className="rounded-lg border border-zinc-700 bg-zinc-900 overflow-hidden">
-      <div className="px-3 py-1.5 bg-zinc-800 border-b border-zinc-700 text-xs text-zinc-500 font-mono">
-        #{index + 1}
-      </div>
-      <pre className="p-4 text-xs text-zinc-300 font-mono overflow-x-auto whitespace-pre-wrap break-words leading-relaxed">
-        {JSON.stringify(entry, null, 2)}
-      </pre>
-    </div>
-  )
-}
+// ---- App ----
 
 export default function App() {
   const [result, setResult] = useState<ParseResult | null>(null)
