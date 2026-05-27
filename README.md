@@ -1,10 +1,10 @@
 # Claude JSONL Viewer
 
-A client-side web app for reading Claude Code session logs. Drag a `.jsonl` file onto the page to view it as a readable conversation.
+A client-side web app for reading Claude Code session logs. Drag a `.jsonl` file onto the page to inspect it.
 
 ## Overview
 
-Claude Code saves every conversation to `~/.claude/projects/<project>/` as a JSONL file — one JSON object per line. These files are the canonical record of what Claude did, what tools it called, and what it said. This app makes those logs human-readable: a clean conversation UI instead of raw JSON.
+Claude Code saves every conversation to `~/.claude/projects/<project>/` as a JSONL file — one JSON object per line. These files are the canonical record of what Claude did, what tools it called, and what it said.
 
 Session files live at:
 ```
@@ -23,34 +23,28 @@ Each line in a session file is one event. Key entry types:
 | `system` | Session-level metadata (cost summaries, compaction events) |
 | `mode` | Session mode (normal, auto, etc.) |
 
-Messages form a tree via `parentUuid` — the viewer follows the main chain by default and can optionally show sidechains.
+Messages form a tree via `parentUuid`. Assistant content blocks: `text`, `thinking`, `tool_use`. Tool results arrive as `user` entries with `tool_result` content blocks.
 
-Assistant content blocks include:
-- `text` — Claude's response prose
-- `thinking` — Extended thinking (shown collapsibly)
-- `tool_use` — A tool call with name and input
-- Tool results arrive as `user` entries with `tool_result` content blocks
+## Features
 
-## Planned Features
-
-### Drop Zone
+**Implemented (v1)**
 - Drag and drop a `.jsonl` file onto the page to load it
 - Click to open a file picker as an alternative
-- Drop a new file at any time to replace the current session
+- Each entry displayed as formatted raw JSON
+- Parse error reporting for malformed lines
 
-### Conversation View
-- Render the conversation as a readable chat timeline
+**Planned**
+- Conversation view: render the session as a readable chat timeline
 - Collapsible tool call / tool result pairs (Bash, Read, Edit, Write, etc.)
-- Syntax-highlighted code blocks in tool inputs and outputs
+- Syntax-highlighted code blocks via Shiki
 - Collapsible thinking blocks
-- Token usage and cost summary per turn (from `usage` fields)
+- Token usage and cost summary per turn
 
 ## Tech Stack
 
 - **Frontend:** React + TypeScript
-- **Styling:** Tailwind CSS
-- **Syntax highlighting:** Shiki
-- **Bundler:** Vite
+- **Styling:** Tailwind CSS v3
+- **Bundler:** Vite 5
 - Pure client-side — no backend required
 
 ## Getting Started
