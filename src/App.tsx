@@ -1,4 +1,4 @@
-import { useState, useCallback, DragEvent, ChangeEvent, ReactNode } from 'react'
+import { useState, useCallback, useRef, DragEvent, ChangeEvent, ReactNode } from 'react'
 
 // ---- Types ----
 
@@ -374,6 +374,8 @@ function DropZone({ onFile }: { onFile: (file: File) => void }) {
 
 export default function App() {
   const [result, setResult] = useState<ParseResult | null>(null)
+  const [draggingOver, setDraggingOver] = useState(false)
+  const dragCounter = useRef(0)
 
   const handleFile = useCallback((file: File) => {
     const reader = new FileReader()
@@ -384,8 +386,52 @@ export default function App() {
     reader.readAsText(file)
   }, [])
 
+  const handleDragEnter = useCallback((e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    dragCounter.current++
+    setDraggingOver(true)
+  }, [])
+
+  const handleDragLeave = useCallback((e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    dragCounter.current--
+    if (dragCounter.current === 0) setDraggingOver(false)
+  }, [])
+
+  const handleDragOver = useCallback((e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault()
+  }, [])
+
+  const handleDrop = useCallback((e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    dragCounter.current = 0
+    setDraggingOver(false)
+    const file = e.dataTransfer.files[0]
+    if (file) handleFile(file)
+  }, [handleFile])
+
+  const handleHeaderFileChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) handleFile(file)
+    e.target.value = ''
+  }, [handleFile])
+
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100">
+    <div
+      className="min-h-screen bg-zinc-950 text-zinc-100"
+      onDragEnter={handleDragEnter}
+      onDragLeave={handleDragLeave}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+    >
+      {draggingOver && (
+        <div className="fixed inset-0 z-50 bg-zinc-950/80 backdrop-blur-sm flex items-center justify-center pointer-events-none">
+          <div className="border-2 border-dashed border-blue-400 rounded-2xl px-20 py-12 text-blue-300 text-xl font-medium">
+            Drop to open
+          </div>
+        </div>
+      )}
+
       <header className="border-b border-zinc-800 px-6 py-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <span className="text-lg font-semibold tracking-tight">Claude JSONL Viewer</span>
@@ -399,6 +445,10 @@ export default function App() {
             {result.errors.length > 0 && (
               <span className="text-yellow-500">{result.errors.length} parse errors</span>
             )}
+            <label className="text-zinc-500 hover:text-zinc-300 transition-colors text-xs cursor-pointer">
+              Open file
+              <input type="file" accept=".jsonl" className="hidden" onChange={handleHeaderFileChange} />
+            </label>
             <button
               onClick={() => setResult(null)}
               className="text-zinc-500 hover:text-zinc-300 transition-colors text-xs"
