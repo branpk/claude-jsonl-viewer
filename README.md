@@ -23,22 +23,25 @@ Each line in a session file is one event. Key entry types:
 | `system` | Session-level metadata (cost summaries, compaction events) |
 | `mode` | Session mode (normal, auto, etc.) |
 
-Messages form a tree via `parentUuid`. Assistant content blocks: `text`, `thinking`, `tool_use`. Tool results arrive as `user` entries with `tool_result` content blocks.
+Messages form a tree via `parentUuid`. Assistant content blocks: `text`, `thinking`, `tool_use`. Tool results arrive as `user` entries with `tool_result` content blocks. Content for `user` and `assistant` entries is nested under `entry.message.content`; `system` entries have `content` directly on the entry.
 
 ## Features
 
-**Implemented (v1)**
-- Drag and drop a `.jsonl` file onto the page to load it
-- Click to open a file picker as an alternative
-- Each entry displayed as formatted raw JSON
+- Drag and drop a `.jsonl` file onto the page to load it (or use the file picker)
 - Parse error reporting for malformed lines
+- Each entry shows type badge (color-coded), timestamp, and rendered↔raw toggle
+- **Rendered view** (default): human-readable display per entry type
+  - `assistant`: prose text, collapsible thinking blocks, tool call cards with expanded input
+  - `user`: text messages, tool result cards with expanded output and char count
+  - `system`: content string + collapsible metadata
+  - Unknown types: pretty-printed JSON fallback
+- **Raw view**: full `JSON.stringify` output for any entry
+- All text uses monospace font; collapsible sections open by default
 
 **Planned**
-- Conversation view: render the session as a readable chat timeline
-- Collapsible tool call / tool result pairs (Bash, Read, Edit, Write, etc.)
+- Conversation timeline view (follow `parentUuid` chain to render as chat)
 - Syntax-highlighted code blocks via Shiki
-- Collapsible thinking blocks
-- Token usage and cost summary per turn
+- Token usage and cost summary per session
 
 ## Tech Stack
 

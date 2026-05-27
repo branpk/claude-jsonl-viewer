@@ -23,40 +23,82 @@ Pure client-side React + TypeScript app. No backend, no router. All file I/O hap
 
 ### Current structure
 
-Everything lives in `src/App.tsx` (single file, ~135 lines). It has three layers:
+Everything lives in `src/App.tsx` (~340 lines). It has these layers:
 
-1. **Parser** — `parseJsonl(filename, text)` splits on newlines, `JSON.parse`s each non-empty line, and returns `{ filename, entries: unknown[], errors: { line, text }[] }`.
-2. **Components** — `<DropZone>` (drag-and-drop + file picker), `<EntryCard>` (one JSON entry rendered in a `<pre>`), `<App>` (top-level state: `ParseResult | null`).
-3. **Styling** — Tailwind CSS v3 utility classes only. No CSS modules, no `App.css`. Tailwind `content` glob covers `./src/**/*.{ts,tsx}`.
+1. **Types** — TypeScript interfaces for `AssistantEntry`, `UserEntry`, `SystemEntry` and their content blocks.
+2. **Parser** — `parseJsonl(filename, text)` splits on newlines, `JSON.parse`s each non-empty line, returns `{ filename, entries: unknown[], errors }`.
+3. **Type guards** — `isAssistantEntry`, `isUserEntry`, `isSystemEntry` narrow `unknown` entries at render time.
+4. **Rendered components** — `RenderedAssistant`, `RenderedUser`, `RenderedSystem` plus `ToolUseCard`, `ToolResultCard`, `Collapsible`, `CodeBox`.
+5. **EntryCard** — wraps any entry with a type/timestamp header and a rendered↔raw toggle (defaults to rendered).
+6. **DropZone / App** — file loading UI and top-level state.
 
 ### How to grow the codebase
 
-As features are added, split `src/App.tsx` along these seams:
-- `src/lib/parseJsonl.ts` — parser + types (`ParseResult`, `JsonlEntry`)
+Split `src/App.tsx` along these seams when it gets unwieldy:
+- `src/lib/parseJsonl.ts` — parser + `ParseResult` type
+- `src/types/jsonl.ts` — entry interfaces and type guards
 - `src/components/DropZone.tsx` — file loading UI
-- `src/components/EntryCard.tsx` — per-entry rendering
-- `src/components/<feature>.tsx` — new rendering features (conversation view, tool call collapsing, etc.)
-
-The `unknown[]` entry type in `ParseResult` is intentionally loose for v1. As structured rendering is added, define typed interfaces for the Claude JSONL schema (see below) and narrow entries at render time.
+- `src/components/EntryCard.tsx` — card shell + toggle
+- `src/components/RenderedEntry.tsx` — rendered views per type
 
 ## Claude JSONL Schema
 
 Session files live at `~/.claude/projects/<encoded-path>/<uuid>.jsonl`. One JSON object per line.
 
-Top-level fields present on every entry:
-- `type`: `"user"` | `"assistant"` | `"system"` | `"attachment"` | `"mode"`
-- `uuid`: unique ID for this entry
-- `parentUuid`: links entries into a conversation tree; follow the longest chain for the main thread
-- `timestamp`: ISO 8601
+**IMPORTANT:** Always verify the schema against real files before writing typed interfaces. Run:
+```bash
+python3 -c "
+import json, sys
+with open('path/to/file.jsonl') as f:
+    for line in f:
+        obj = json.loads(line.strip())
+        print(obj.get('type'), list(obj.keys()))
+"
+```
 
-**`assistant` entries** have a `content` array of blocks:
-- `{ type: "text", text: string }` — response prose
-- `{ type: "thinking", thinking: string }` — extended thinking (may be long)
-- `{ type: "tool_use", id, name, input }` — a tool call; `name` is e.g. `"Bash"`, `"Read"`, `"Edit"`
+### Top-level fields on every entry
+- `type`: `"user"` | `"assistant"` | `"system"` | `"attachment"` | `"mode"` | `"permission-mode"` | `"file-history-snapshot"`
+- `uuid`, `parentUuid` (tree linkage), `timestamp` (ISO 8601)
+- `isSidechain`, `sessionId`, `version`, `gitBranch`, `slug`, `cwd`, `entrypoint`, `userType` — session metadata
 
-**`user` entries** carry either human text or tool results:
-- `{ type: "tool_result", tool_use_id, content }` — result matching a prior `tool_use` block
+### `assistant` entries
+Content and usage are nested inside `entry.message` (not directly on the entry):
+```
+entry.message.content  — AssistantBlock[]
+entry.message.usage    — { input_tokens, output_tokens, cache_read_input_tokens, cache_creation_input_tokens }
+entry.message.model    — model ID string
+entry.message.id       — API message ID
+```
+Content block types:
+- `{ type: "text", text: string }`
+- `{ type: "thinking", thinking: string, signature: string }`
+- `{ type: "tool_use", id, name, input, caller }` — `name` is e.g. `"Bash"`, `"Read"`, `"Edit"`
 
-**`system` entries** carry session metadata: cost summaries, compaction events.
+### `user` entries
+Content is also nested inside `entry.message`:
+```
+entry.message.content  — string | UserBlock[]
+```
+- String: slash commands and plain user messages
+- Array: `{ type: "text", text }` or `{ type: "tool_result", tool_use_id, content: string }`
 
-`usage` on assistant entries: `{ input_tokens, output_tokens, cache_read_input_tokens, cache_creation_input_tokens }`.
+### `system` entries
+`content` is a **string directly on the entry** (not in `message`):
+```
+entry.content  — string (may contain XML-like tags)
+entry.subtype  — e.g. "local_command"
+entry.level    — "info" | etc.
+```
+
+### Other entry types
+- `mode`: `entry.mode` field
+- `permission-mode`: `entry.permissionMode` field
+- `file-history-snapshot`: `entry.messageId`, `entry.snapshot`, `entry.isSnapshotUpdate`
+
+## Component conventions
+
+**`<Collapsible defaultOpen>`** — all collapsible sections in the app currently open by default. Pass `defaultOpen` when adding new ones unless the content is large enough that expanding it on load would be disruptive.
+
+## Lessons learned
+
+**Check real files before writing typed interfaces.** The schema above was derived from documentation and turned out to be wrong in a key detail: both `user` and `assistant` entries nest content inside `entry.message`, not directly on the entry. Coding against the wrong assumption caused runtime crashes on every rendered entry. Before adding new typed interfaces or extending existing ones, sample real JSONL files with the command in the schema section above.
