@@ -1,6 +1,10 @@
 # Claude JSONL Viewer
 
+> **Warning:** This app is hastily thrown together and incomplete. Expect missing features and rough edges.
+
 A client-side web app for reading Claude Code session logs. Drag a `.jsonl` file onto the page to inspect it.
+
+**Live app:** https://branpk.github.io/claude-jsonl-viewer/
 
 ## Overview
 
